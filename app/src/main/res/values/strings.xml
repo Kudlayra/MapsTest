@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">MapsTest</string>
+    <string name="action_settings">Settings</string>
+    <!-- Strings used for fragments for navigation -->
+    <string name="main_fragment_label">Main Fragment</string>
+    <string name="map_fragment_label">Map Fragment</string>
+    <string name="map">Map</string>
+    <string name="done">Done</string>
+    <string name="map_api_key">AIzaSyC73pkzr2Qj7Kj2781h4ff9D6gSkttiii4</string>
+</resources>
