@@ -1,70 +1,86 @@
 package com.example.mapstest.app.presentation.ui
 
 import android.Manifest
-import android.annotation.SuppressLint
+import android.content.Context
 import android.content.pm.PackageManager
-import android.location.Location
+import android.location.LocationManager
 import android.os.Bundle
-import android.util.Log
-import androidx.fragment.app.Fragment
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.core.app.ActivityCompat
+import android.widget.Toast
+import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.content.ContextCompat
+import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.navigation.fragment.findNavController
+import androidx.navigation.fragment.navArgs
 import com.example.mapstest.R
-import com.example.mapstest.app.presentation.ui.view_models.MainViewModel
+import com.example.mapstest.app.MapsTestApplication
 import com.example.mapstest.app.presentation.ui.view_models.MainViewModelFactory
+import com.example.mapstest.app.presentation.ui.view_models.MapViewModel
+import com.example.mapstest.data.models.Address
 import com.example.mapstest.databinding.FragmentMapBinding
-import com.google.android.gms.location.FusedLocationProviderClient
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.GoogleMap
-import com.google.android.gms.maps.OnMapReadyCallback
-import com.google.android.gms.maps.SupportMapFragment
-import com.google.android.gms.maps.model.LatLng
-import com.google.android.libraries.places.api.Places
-import com.google.android.libraries.places.api.net.PlacesClient
+import com.yandex.mapkit.Animation
+import com.yandex.mapkit.MapKit
+import com.yandex.mapkit.MapKitFactory
+import com.yandex.mapkit.geometry.Point
+import com.yandex.mapkit.location.Location
+import com.yandex.mapkit.location.LocationListener
+import com.yandex.mapkit.location.LocationStatus
+import com.yandex.mapkit.map.CameraPosition
+import com.yandex.mapkit.map.InputListener
+import com.yandex.mapkit.map.Map
+import com.yandex.mapkit.mapview.MapView
+import com.yandex.runtime.ui_view.ViewProvider
+import javax.inject.Inject
 
-class MapFragment : Fragment(), OnMapReadyCallback {
+
+class MapFragment : Fragment(), LocationListener, InputListener {
 
     private var _binding: FragmentMapBinding? = null
     private val binding get() = _binding!!
+    private var mapKit: MapKit? = null
+    private var mapView: MapView? = null
+    private var placemarkIcon: View? = null
+    private var needScrollToLocationFlag = true
+    private val args by navArgs<MapFragmentArgs>()
 
+    @Inject
     lateinit var viewModelFactory: MainViewModelFactory
-    private val viewModel: MainViewModel by viewModels() {
+    private val viewModel: MapViewModel by viewModels {
         viewModelFactory
     }
 
-    private var map: GoogleMap? = null
-    private var placesClient: PlacesClient? = null
-    private var fusedLocationProviderClient: FusedLocationProviderClient? = null
-    private var locationPermissionGranted = false
-    private var lastKnownLocation: Location? = null
-    private val defaultLocation = LatLng(-33.8523341, 151.2106085)
-
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
-        savedInstanceState: Bundle?
-    ): View? {
-
+        savedInstanceState: Bundle?,
+    ): View {
         _binding = FragmentMapBinding.inflate(inflater, container, false)
+        mapKitInit()
+        doInjections()
         return binding.root
-
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        getLocationPermission()
+        setMapData()
+        addClickListeners()
+        addObservers()
 
-        getCurrentLocation()
-        val mapFragment = childFragmentManager.findFragmentById(R.id.map) as SupportMapFragment
-        mapFragment.getMapAsync(this)
+    }
 
-        binding.buttonSecond.setOnClickListener {
-            findNavController().navigate(R.id.action_SecondFragment_to_FirstFragment)
-        }
+    override fun onStart() {
+        super.onStart()
+        mapView?.onStart()
+        MapKitFactory.getInstance().onStart()
+    }
+
+    override fun onStop() {
+        mapView?.onStop()
+        MapKitFactory.getInstance().onStop()
+        super.onStop()
     }
 
     override fun onDestroyView() {
@@ -72,81 +88,111 @@ class MapFragment : Fragment(), OnMapReadyCallback {
         _binding = null
     }
 
-    override fun onMapReady(googleMap: GoogleMap) {
-        map = googleMap
-        updateLocationUI()
-        getDeviceLocation()
+    override fun onMapTap(map: Map, point: Point) {
+        mapView!!.map.mapObjects.clear()
+        mapView!!.map.mapObjects.addPlacemark(point, ViewProvider(placemarkIcon))
+        needScrollToLocationFlag = false
+        viewModel.setCurrentLocation(point)
     }
 
-    private fun getCurrentLocation() {
-        Places.initialize(requireContext(), getString(R.string.map_api_key))
-        placesClient = Places.createClient(requireContext())
-        fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(requireContext())
-    }
+    override fun onMapLongTap(map: Map, point: Point) {}
 
-    @SuppressLint("MissingPermission")
-    private fun getDeviceLocation() {
-        try {
-            if (locationPermissionGranted) {
-                getCurrentLocation()
-                val locationResult = fusedLocationProviderClient?.lastLocation
-                locationResult?.addOnCompleteListener(requireActivity()) { task ->
-                    if (task.isSuccessful) {
-                        // Set the map's camera position to the current location of the device.
-                        lastKnownLocation = task.result
-                        if (lastKnownLocation != null) {
-                            map?.moveCamera(CameraUpdateFactory.newLatLngZoom(
-                                LatLng(lastKnownLocation!!.latitude,
-                                    lastKnownLocation!!.longitude), DEFAULT_ZOOM.toFloat()))
-                        }
-                    } else {
-                        Log.d(TAG, "Current location is null. Using defaults.")
-                        Log.e(TAG, "Exception: %s", task.exception)
-                        map?.moveCamera(CameraUpdateFactory
-                            .newLatLngZoom(defaultLocation, DEFAULT_ZOOM.toFloat()))
-                        map?.uiSettings?.isMyLocationButtonEnabled = false
-                    }
-                }
+    override fun onLocationUpdated(location: Location) {
+        view?.let {
+            if (needScrollToLocationFlag) {
+                scrollToPosition(location.position.latitude, location.position.longitude)
             }
-        } catch (e: SecurityException) {
-            Log.e("Exception: %s", e.message, e)
+            binding.progressBar.progressBarContainer.visibility = View.GONE
+            binding.tvAddressInfo.visibility = View.VISIBLE
         }
+    }
+
+    private fun scrollToPosition(lat: Double, lon: Double) {
+        mapView!!.map.move(
+            CameraPosition(Point(lat, lon), DEFAULT_ZOOM, 0.0f, 0.0f),
+            Animation(Animation.Type.SMOOTH, 1f),
+            null)
+    }
+
+    private fun setPlacemarkerIcon() {
+        placemarkIcon = View(requireContext())
+        placemarkIcon?.background =
+            AppCompatResources.getDrawable(requireContext(), R.drawable.ic_placemarker_24)
+    }
+
+    private fun doInjections() {
+        (requireContext().applicationContext as MapsTestApplication).appComponent.inject(this)
+        args.address?.let { address -> viewModel.setCurrentLocation(address) }
+    }
+
+    private fun setMapData() {
+        mapView = binding.mapview
+        mapView?.map?.addInputListener(this)
+        args.address?.let {
+            mapView?.map?.mapObjects?.addPlacemark(Point(it.latitude, it.longitude),
+                ViewProvider(placemarkIcon))
+            needScrollToLocationFlag = false
+        }
+    }
+
+    override fun onLocationStatusUpdated(locationStatus: LocationStatus) {}
+
+    private fun addObservers() {
+        viewModel.currentLocation.observe(viewLifecycleOwner) { location ->
+            updateUi(location)
+        }
+    }
+
+    private fun addClickListeners() {
+        binding.applyBtn.setOnClickListener {
+            val action =
+                MapFragmentDirections.actionMapFragmentToMainFragment(viewModel.currentLocation.value)
+            findNavController().navigate(action)
+        }
+    }
+
+    private fun updateUi(location: Address?) {
+        location?.let {
+            binding.tvAddressInfo.text =
+                String.format(getString(R.string.address),
+                    location.latitude,
+                    location.longitude)
+            binding.applyBtn.isEnabled = true
+        } ?: run { binding.tvAddressInfo.text = getString(R.string.location_not_found) }
+        binding.progressBar.progressBarContainer.visibility = View.GONE
+        binding.tvAddressInfo.visibility = View.VISIBLE
+    }
+
+    private fun isGpsEnabled() {
+        val locationManager =
+            activity?.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+            showMessage(getString(R.string.geodata_disabled))
+            updateUi(null)
+        }
+    }
+
+    private fun showMessage(message: String) {
+        Toast.makeText(requireContext(), message, Toast.LENGTH_LONG).show()
+    }
+
+    private fun mapKitInit() {
+        MapKitFactory.initialize(requireContext())
+        mapKit = MapKitFactory.getInstance()
+        mapKit?.createLocationManager()?.requestSingleUpdate(this)
+        setPlacemarkerIcon()
     }
 
     private fun getLocationPermission() {
         if (ContextCompat.checkSelfPermission(requireContext(),
                 Manifest.permission.ACCESS_FINE_LOCATION)
-            == PackageManager.PERMISSION_GRANTED) {
-            locationPermissionGranted = true
-        } else {
-            ActivityCompat.requestPermissions(requireActivity(), arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
-                PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION)
-        }
-    }
-
-    @SuppressLint("MissingPermission")
-    private fun updateLocationUI() {
-        if (map == null) {
-            return
-        }
-        try {
-            if (locationPermissionGranted) {
-                map?.isMyLocationEnabled = true
-                map?.uiSettings?.isMyLocationButtonEnabled = true
-            } else {
-                map?.isMyLocationEnabled = false
-                map?.uiSettings?.isMyLocationButtonEnabled = false
-                lastKnownLocation = null
-                getLocationPermission()
-            }
-        } catch (e: SecurityException) {
-            Log.e("Exception: %s", e.message, e)
-        }
+            != PackageManager.PERMISSION_GRANTED
+        ) updateUi(null)
+        isGpsEnabled()
     }
 
     companion object {
-        private const val PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION = 1
-        private const val DEFAULT_ZOOM = 15
-        private val TAG = MapFragment::class.java.simpleName
+        const val DEFAULT_ZOOM = 14.0f
     }
+
 }
