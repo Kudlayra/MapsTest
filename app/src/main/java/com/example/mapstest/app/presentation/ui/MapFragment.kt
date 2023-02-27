@@ -92,7 +92,7 @@ class MapFragment : Fragment(), LocationListener, InputListener {
         mapView!!.map.mapObjects.clear()
         mapView!!.map.mapObjects.addPlacemark(point, ViewProvider(placemarkIcon))
         needScrollToLocationFlag = false
-        viewModel.setCurrentLocation(point)
+        viewModel.getAddress(point)
     }
 
     override fun onMapLongTap(map: Map, point: Point) {}
@@ -155,6 +155,7 @@ class MapFragment : Fragment(), LocationListener, InputListener {
         location?.let {
             binding.tvAddressInfo.text =
                 String.format(getString(R.string.address),
+                    location.addressName ?: getString(R.string.no_address_data),
                     location.latitude,
                     location.longitude)
             binding.applyBtn.isEnabled = true

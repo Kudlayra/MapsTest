@@ -5,8 +5,10 @@ import com.yandex.mapkit.geometry.Point
 
 class MapUtils {
 
-    fun mapPointToAddress(point: Point): Address {
-        return Address(point.latitude, point.longitude)
+    fun mapPointToAddress(point: Point, addressName: String): Address {
+        return Address(addressName = addressName,
+            latitude = point.latitude,
+            longitude = point.longitude)
     }
 
 }

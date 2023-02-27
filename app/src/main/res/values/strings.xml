@@ -7,7 +7,8 @@
     <string name="apply_btn">Подтвердить выбранную точку</string>
     <string name="location_not_found">Точка не задана</string>
     <string name="getting_geodata">Получаем геоданные…</string>
-    <string name="address">Address\n (%s, %s)</string>
+    <string name="address">%s\n (%s, %s)</string>
     <string name="geodata_disabled">GPS отключен</string>
     <string name="select_place">Отметьте точку на карте</string>
+    <string name="no_address_data">No address data</string>
 </resources>

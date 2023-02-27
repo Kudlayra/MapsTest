@@ -2,9 +2,13 @@ package com.example.mapstest.app.presentation.ui.view_models
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import com.example.mapstest.domain.usecases.GetGeocoderUseCase
 import com.example.mapstest.utils.MapUtils
 
-class MainViewModelFactory(private val mapUtils: MapUtils) : ViewModelProvider.Factory {
+class MainViewModelFactory(
+    private val mapUtils: MapUtils,
+    private val getGeocoderUseCase: GetGeocoderUseCase,
+) : ViewModelProvider.Factory {
 
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(MainViewModel::class.java)) {
@@ -13,7 +17,7 @@ class MainViewModelFactory(private val mapUtils: MapUtils) : ViewModelProvider.F
         }
         if (modelClass.isAssignableFrom(MapViewModel::class.java)) {
             @Suppress
-            return MapViewModel(mapUtils) as T
+            return MapViewModel(mapUtils, getGeocoderUseCase) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

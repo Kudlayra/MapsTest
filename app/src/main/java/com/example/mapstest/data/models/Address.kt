@@ -4,4 +4,5 @@ import android.os.Parcelable
 import kotlinx.parcelize.Parcelize
 
 @Parcelize
-data class Address(val latitude: Double, val longitude: Double) : Parcelable
+data class Address(val addressName: String?, val latitude: Double, val longitude: Double) :
+    Parcelable

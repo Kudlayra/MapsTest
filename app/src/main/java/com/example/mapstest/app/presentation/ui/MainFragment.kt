@@ -67,6 +67,7 @@ class MainFragment : Fragment() {
         location?.let {
             binding.tvAddressInfo.text =
                 String.format(getString(R.string.address),
+                    location.addressName ?: getString(R.string.no_address_data),
                     location.latitude,
                     location.longitude)
         } ?: run { binding.tvAddressInfo.text = getString(R.string.location_not_found) }
